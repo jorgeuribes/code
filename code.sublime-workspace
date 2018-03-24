@@ -1,0 +1,267 @@
+{
+	"auto_complete":
+	{
+		"selected_items":
+		[
+			[
+				"TEM",
+				"TEAMSFILE"
+			]
+		]
+	},
+	"buffers":
+	[
+		{
+			"file": "/home/jorge/Documents/settings.txt",
+			"settings":
+			{
+				"buffer_size": 836,
+				"encoding": "UTF-8",
+				"line_ending": "Unix"
+			}
+		},
+		{
+			"contents": "#!/bin/more\n==================================\nSCRIPT NAME: aws_apachesrv_opt.yml  \n==================================\n--- # Ansible Playbook to Configure Static Web Server and Use it to Create a New Template\n- hosts: aws\n  connection: ssh\n  remote_user: ec2-user\n  become: yes\n  gather_facts: yes\n  tasks:\n  - name: Execute All Installations\n    yum: name={{ item }} state=latest\n    with_items:\n      - httpd\n      - wget\n    notify:\n      - CopySiteFiles\n      - RestartHTTPD\n      - WaitForSite\n      - TestSite\n      - DisplayResults\n  handlers:\n  - name: CopySiteFiles\n    copy: src=../files/index.html dest=/var/www/html/index.html owner=root group=root mode=0655 backup=yes\n  - name: RestartHTTPD\n    service: name=httpd state=restarted\n  - name: WaitForSite\n    wait_for: host={{ ansible_nodename }} port=80 delay=5\n  - name: TestSite\n    shell: /usr/bin/wget http://localhost\n    register: site_result\n  - name: DisplayResults\n    debug: var=site_result\n\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - ../files/awscreds.yml\n  tasks:\n  - name: Take a snapshot backup of the website directory\n    ec2_snapshot:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance_id: i-fea24039\n      device_name: /dev/sdb\n      description: Initial Playbook Static Site Deployment Backup\n      wait: no\n    register: snapshot_results\n    notify:\n    - DisplaySnapshotResults\n    - CreateNewAMITemplate\n    - DisplayAMICreationResults\n  handlers:\n  - name: DisplaySnapshotResults\n    debug: var=snapshot_results\n  - name: CreateNewAMITemplate\n    ec2_ami:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance_id: i-fea24039\n      wait: no\n      name: myansibleamitemplate123456\n      tags:\n        Name: MyNewAnsibleAMITemplate123456\n        Service: TestAMITemplatePlaybook123456\n    register: ami_results\n  - name: DisplayAMICreationResults\n    debug: var=ami_results\n==================================\nSCRIPT NAME: aws_apachesrv_outline.yml  \n==================================\n--- # THIS IS AN OUTLINE OF THE TASKS THAT OUR PLAYBOOK NEEDS TO ACCOMPLISH\n- hosts: localhost, awsinstance\n- sudo\n- connection: local, ssh\n- ssh-agent, ssh-add key\n- gather_facts: yes\n- include credentials file\n\n- connect to a running instance id\n  - install apache\n  - copy the website\n  - restart apache\n  - test port 80 and the default page\n  - install all necessary updates\n\n- connect to the AWS console\n  - backup the web directory (snapshot - /dev/sdb1)\n  - create new template (AMI) from the running instance\n  - launch a new instance from the new AMI we create\n==================================\nSCRIPT NAME: aws_apachsrv_pb.yml  \n==================================\n--- # Ansible Playbook to Configure Static Web Server and Use it to Create a New Template\n- hosts: aws\n  connection: ssh\n  remote_user: ec2-user\n  become: yes\n  gather_facts: yes\n  tasks:\n  - name: Connect to the remote host, execute yum updates\n    yum: name=* state=latest\n  - name: Install the HTTPD Server\n    yum: name=httpd state=latest\n  - name: Deploy the static website\n    copy: src=../files/index.html dest=/var/www/html/index.html owner=root group=root mode=0655 backup=yes\n  - name: Restart the HTTPD Service\n    service: name=httpd state=restarted\n  - name: Wait for the HTTP port 80 to be listening\n    wait_for: host=ec2-54-200-206-39.us-west-2.compute.amazonaws.com port=80 delay=5\n  - name: Install WGET to test the site\n    yum: name=wget state=latest\n  - name: Test the site\n    shell: /usr/bin/wget http://localhost\n    register: site_result\n  - name: Display the site output results\n    debug: var=site_result\n\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - ../files/awscreds.yml\n  tasks:\n  - name: Take a snapshot backup of the website directory\n    ec2_snapshot:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance_id: i-fea24039\n      device_name: /dev/sdb\n      description: Initial Playbook Static Site Deployment Backup\n      wait: no\n    register: snapshot_results\n  - name: Display the snapshot results\n    debug: var=snapshot_results\n  - name: Create a New Template AMI from our Instance\n    ec2_ami:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance_id: i-fea24039\n      wait: no\n      name: myansibleamitemplate223\n      tags:\n        Name: MyNewAnsibleAMITemplate223\n        Service: TestAMITemplatePlaybook223\n    register: ami_results\n  - name: Display the AMI Creation Results\n    debug: var=ami_results\n==================================\nSCRIPT NAME: aws_iam.yml  \n==================================\n--- # AWS IAM MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Create a couple of IAM Users\n    iam:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      iam_type: user\n      name: \"{{ item }}\"\n      state: present\n      password: \"password\"\n      access_key_state: create\n    with_items:\n    - tmp1\n    - tmp2\n    register: output\n  - name: Show the JSON Results\n    debug: var=output\n==================================\nSCRIPT NAME: aws_s3.yml  \n==================================\n--- # AWS S3 MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Create an S3 Bucket\n    s3: \n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      bucket: ansiblebucket2\n      mode: create\n      permission: public-read-write\n    register: create_bucket\n  - name: Copy the Files to the Bucket\n    s3:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      bucket: ansiblebucket2\n      object: /Playbooks/aws_iam.yml\n      src: /home/test/Playbooks/aws_iam.yml\n      mode: put\n    register: copy_files\n  - name: Output of Creation\n    debug: var=create_bucket\n  - name: Output of Copy  \n    debug: var=copy_files\n==================================\nSCRIPT NAME: awsec2_alarm.yml  \n==================================\n--- # EC2 METRIC ALARM MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts:\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Create a Basic CPU Alarm\n    ec2_metric_alarm:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      state: present\n      name: OurFirstAlarmTest\n      metric: \"CPUUtilization\"\n      namespace: \"AWS/EC2\"\n      statistic: Average\n      comparison: \">=\"\n      threshold: 25.0\n      period: 300\n      evaluation_periods: 6\n      unit: \"Percent\"\n      description: \"This alarm fires when CPU is greater than 25% for 30 minutes\"\n      dimensions: {'InstanceID':'i-1da8b9d9'}\n==================================\nSCRIPT NAME: awsec2_ami.yml  \n==================================\n--- # EC2_AMI Example for creating a basic AMI template from an existing image\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Basic Provisioning of an AMI from our Instance\n    ec2_ami:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance_id: i-1da8b9d9\n      wait: no\n      name: mynewami\n      tags:\n        Name: MyNewAMI\n        Service: TestAMIService\n    register: instance\n==================================\nSCRIPT NAME: awsec2_ami_copy.yml  \n==================================\n--- # MODULE EC2_AMI_COPY EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files: \n  - files/awscreds.yml\n  tasks:\n  - name: Copy AMI from one region to another\n    ec2_ami_copy:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      source_region: \"{{ aws_region }}\"\n      source_image_id: ami-91b6aff0\n      wait: no\n      name: useastami1\n      tags: \n        Name: MyNewEastAMI1\n        Service: TestEastAMIService1\n    register: instance\n==================================\nSCRIPT NAME: awsec2_ami_custom.yml  \n==================================\n--- # EC2_AMI Example for creating a basic AMI template from an existing image\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: More Advanced Provisioning of an AMI from our Instance\n    ec2_ami:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance_id: i-1da8b9d9\n      wait: no\n      name: mynewami2\n      tags:\n        Name: MyNewAMI2\n        Service: TestAMIService2\n      device_mapping:\n        - device_name: /dev/sdb1\n          size: 100\n          delete_on_termination: true\n          volume_type: gp2\n    register: instance\n==================================\nSCRIPT NAME: awsec2_ami_find.yml  \n==================================\n--- # EC2 AMI FIND MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  become: yes\n  remote_user: test\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Find our AMI ID\n    ec2_ami_find:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      owner: self\n      ami_tags:\n        Name: MyNewAMI\n      no_result_action: fail\n    register: ami_find\n  - debug: msg={{ ami_find.results[0].ami_id }}\n  - debug: msg={{ ami_find.results[0].name }}\n==================================\nSCRIPT NAME: awsec2_group.yml  \n==================================\n--- # EC2_GROUP MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Basic Security Group Creation\n    ec2_group:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      name: MyTestLinuxAcademyGroup\n      description: This is the EC2_Group Demo \n      vpc_id: vpc-25f7c940\n      rules:\n        - proto: tcp\n          from_port: 80\n          to_port: 80\n          cidr_ip: 0.0.0.0/0\n      rules_egress:\n        - proto: tcp\n          from_port: 80\n          to_port: 80\n          cidr_ip: 0.0.0.0/0\n==================================\nSCRIPT NAME: awsec2_provision.yml  \n==================================\n--- # EC2 MODULE PROVISIONING EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Basic provisioning of two t2.micro EC2 instances\n    ec2: \n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      image: ami-f0091d91\n      instance_type: t2.micro\n      count: 2\n==================================\nSCRIPT NAME: awsec2_remote.yml  \n==================================\n--- # EC2 REMOTE FACTS MODULES EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Gather facts of all running EC2 instances\n    ec2_remote_facts:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n    register: remote_facts\n  - debug: msg={{ remote_facts }}\n==================================\nSCRIPT NAME: awsec2_snapshot.yml  \n==================================\n--- # EC2 SNAPSHOT MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files: \n  - files/awscreds.yml\n  tasks: \n  - name: Take a snapshot of the running instance root volume\n    ec2_snapshot:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance_id: i-1da8b9d9\n      device_name: /dev/xvda\n      description: Root Volume Snapshot Taken During Ansible Course\n      wait: no\n    register: snapshot\n==================================\nSCRIPT NAME: awsec2_snapshotdel.yml  \n==================================\n--- # EC2 SNAPSHOT MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files: \n  - files/awscreds.yml\n  tasks: \n  - name: Take a snapshot of the running instance root volume\n    ec2_snapshot:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      snapshot_id: snap-707a342a\n      state: absent\n      wait: no\n    register: snapshot\n==================================\nSCRIPT NAME: awsec2_state.yml  \n==================================\n--- # EC2 - Start/Stop/Terminate Module Use Example\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Manage the state of an instance\n    ec2:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance_ids: i-1da8b9d9\n      state: running\n==================================\nSCRIPT NAME: awsec2_tag.yml  \n==================================\n--- # EC2 TAG MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks: \n  - name: Label an existing volume so we know what it is\n    ec2_tag:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      resource: vol-8baa327c\n      state: present\n      tags:\n        Name: data_volume\n    register: voltags\n==================================\nSCRIPT NAME: awsec2_voladd.yml  \n==================================\n--- # EC2 VOL MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Create a new volume and attach to running instance\n    ec2_vol:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance: i-1da8b9d9\n      volume_size: 1\n      device_name: sde\n    register: volume_result\n==================================\nSCRIPT NAME: awsec2_volinfo.yml  \n==================================\n--- # EC2 VOL MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Create a new volume and attach to running instance\n    ec2_vol:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      instance: i-1da8b9d9\n      state: list\n    register: volume_result\n  - debug: msg={{ volume_result }}\n==================================\nSCRIPT NAME: awsec2_vpc.yml  \n==================================\n--- # EC2 VPC MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Create a Basic VPC using the 10.x.x.x Private network range\n    ec2_vpc:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      state: present\n      cidr_block: 10.2.1.0/24\n      resource_tags: { \"Name\":\"\" }\n    register: vpcblock\n    \n==================================\nSCRIPT NAME: awsec2_vpcnet.yml  \n==================================\n--- # AWS EC2 VPC NET MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files: \n  - files/awscreds.yml\n  tasks:\n  - name: Create a New VPC Called MyNewVPC\n    ec2_vpc_net:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      name: MyNewVPC\n      state: present\n      cidr_block: 172.17.1.0/24\n    register: vpcnetblock\n  - name: Print the resulting JSON output\n    debug: var=vpcnetblock\n==================================\nSCRIPT NAME: awsec2_vpcnetfacts.yml  \n==================================\n--- # AWS EC2 VPC NET FACTS EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks: \n  - name: Get Information about our VPCs\n    ec2_vpc_net_facts:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      region: \"{{ aws_region }}\"\n      filters:\n        vpc-id: vpc-11727674\n    register: vpcnetfacts\n  - name: Print out the facts\n    debug: var={{ vpcnetfacts.vpcs[0].id }}\n==================================\nSCRIPT NAME: awsec2facts.yml  \n==================================\n--- # Gather EC2 Facts from my remote instance(s)\n- hosts: aws\n  remote_user: ec2-user\n  become: yes\n  connection: ssh\n  gather_facts: yes\n  tasks:\n  - name: Gather the EC2 Facts about running instance(s)\n    action: ec2_facts\n  - name: Conditional Display of Instance Type\n    debug: msg=\"This Instance is of type t2.micro\"\n    when: ansible_ec2_instance_type == 't2.micro'\n==================================\nSCRIPT NAME: awsec2key.yml  \n==================================\n--- # EC2_KEY MODULE EXAMPLE\n- hosts: localhost\n  connection: local\n  remote_user: test\n  become: yes\n  gather_facts: no\n  vars_files:\n  - files/awscreds.yml\n  tasks:\n  - name: Create a New Key Pair - MyKeyPairTestAWS\n    ec2_key:\n      aws_access_key: \"{{ aws_id }}\"\n      aws_secret_key: \"{{ aws_key }}\"\n      name: MyKeyPairTestAWS\n      region: us-west-2\n      state: absent\n==================================\nSCRIPT NAME: awsshell.yml  \n==================================\n--- # AWS EC2 Instance Communication Shell Command Example\n- hosts: aws\n  remote_user: ec2-user\n  become_method: sudo\n  gather_facts: yes\n  connection: ssh\n  tasks:\n  - name: Execute a Shell Command for Listing the Directory\n    shell: ls -al ~\n    register: result\n  - name: Display the results in JSON format\n    debug: var=result\n==================================\nSCRIPT NAME: testfacts.yml  \n==================================\n--- # Gather EC2 Facts from my remote instance(s)\n- hosts: aws\n  remote_user: ec2-user\n  become: yes\n  connection: ssh\n  gather_facts: yes\n  tasks:\n  - name: Gather the EC2 Facts about running instance(s)\n    ec2_facts:\n    register: all_facts\n  - name: Display the facts \n    debug: var=all_facts\n",
+			"file": "aws/linuxacademy-ansibleaws-playbooksamples_1480432616.txt",
+			"file_size": 18722,
+			"file_write_time": 131653203043224066,
+			"settings":
+			{
+				"buffer_size": 18722,
+				"line_ending": "Unix"
+			}
+		}
+	],
+	"build_system": "",
+	"build_system_choices":
+	[
+	],
+	"build_varint": "",
+	"command_palette":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"console":
+	{
+		"height": 0.0,
+		"history":
+		[
+		]
+	},
+	"distraction_free":
+	{
+		"menu_visible": true,
+		"show_minimap": false,
+		"show_open_files": false,
+		"show_tabs": false,
+		"side_bar_visible": false,
+		"status_bar_visible": false
+	},
+	"expanded_folders":
+	[
+		"/home/jorge/code",
+		"/home/jorge/code/aws",
+		"/home/jorge/code/bash"
+	],
+	"file_history":
+	[
+		"/media/jorge/Expansion Drive/BUDA/BUDA_PROP.INF",
+		"/media/jorge/UBUNTU 14_0/ubuntu",
+		"/home/jorge/Documents/speedtest.log",
+		"/home/jorge/Documents/settings.txt",
+		"/home/jorge/code/bash/traps.sh",
+		"/home/jorge/code/bash/names.txt",
+		"/home/jorge/code/bash/delimi.sh",
+		"/home/jorge/code/bash/teams.txt",
+		"/home/jorge/code/bash/delimit.sh",
+		"/home/jorge/Desktop/settings.txt"
+	],
+	"find":
+	{
+		"height": 28.0
+	},
+	"find_in_files":
+	{
+		"height": 0.0,
+		"where_history":
+		[
+		]
+	},
+	"find_state":
+	{
+		"case_sensitive": false,
+		"find_history":
+		[
+		],
+		"highlight": true,
+		"in_selection": false,
+		"preserve_case": false,
+		"regex": false,
+		"replace_history":
+		[
+		],
+		"reverse": false,
+		"show_context": true,
+		"use_buffer2": true,
+		"whole_word": false,
+		"wrap": true
+	},
+	"groups":
+	[
+		{
+			"selected": 1,
+			"sheets":
+			[
+				{
+					"buffer": 0,
+					"file": "/home/jorge/Documents/settings.txt",
+					"semi_transient": false,
+					"settings":
+					{
+						"buffer_size": 836,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								0,
+								0
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Text/Plain text.tmLanguage"
+						},
+						"translation.x": 0.0,
+						"translation.y": 0.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 1,
+					"type": "text"
+				},
+				{
+					"buffer": 1,
+					"file": "aws/linuxacademy-ansibleaws-playbooksamples_1480432616.txt",
+					"semi_transient": true,
+					"settings":
+					{
+						"buffer_size": 18722,
+						"regions":
+						{
+						},
+						"selection":
+						[
+							[
+								17681,
+								17681
+							]
+						],
+						"settings":
+						{
+							"syntax": "Packages/Text/Plain text.tmLanguage",
+							"tab_size": 2,
+							"translate_tabs_to_spaces": true
+						},
+						"translation.x": 0.0,
+						"translation.y": 6840.0,
+						"zoom_level": 1.0
+					},
+					"stack_index": 0,
+					"type": "text"
+				}
+			]
+		}
+	],
+	"incremental_find":
+	{
+		"height": 23.0
+	},
+	"input":
+	{
+		"height": 25.0
+	},
+	"layout":
+	{
+		"cells":
+		[
+			[
+				0,
+				0,
+				1,
+				1
+			]
+		],
+		"cols":
+		[
+			0.0,
+			1.0
+		],
+		"rows":
+		[
+			0.0,
+			1.0
+		]
+	},
+	"menu_visible": true,
+	"output.find_results":
+	{
+		"height": 0.0
+	},
+	"output.unsaved_changes":
+	{
+		"height": 74.0
+	},
+	"pinned_build_system": "",
+	"project": "code.sublime-project",
+	"replace":
+	{
+		"height": 42.0
+	},
+	"save_all_on_build": true,
+	"select_file":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_project":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"select_symbol":
+	{
+		"height": 0.0,
+		"last_filter": "",
+		"selected_items":
+		[
+		],
+		"width": 0.0
+	},
+	"selected_group": 0,
+	"settings":
+	{
+	},
+	"show_minimap": true,
+	"show_open_files": true,
+	"show_tabs": true,
+	"side_bar_visible": true,
+	"side_bar_width": 113.0,
+	"status_bar_visible": true,
+	"template_settings":
+	{
+	}
+}
